@@ -12,8 +12,8 @@ CORS(app)  # Enable CORS for all routes
 model = joblib.load('model/water_quality_model.pkl')
 
 # ThingSpeak Channel & API Key
-THINGSPEAK_CHANNEL_ID = "2895356"  # Replace with your channel ID
-THINGSPEAK_READ_API_KEY = "6ERGDR2M6LSC4IMF"  # Replace with your Read API key
+THINGSPEAK_CHANNEL_ID = "2914163"  # Replace with your channel ID
+THINGSPEAK_READ_API_KEY = "WHOYDCQ41TBWIT7J"  # Replace with your Read API key
 THINGSPEAK_URL = f"https://api.thingspeak.com/channels/{THINGSPEAK_CHANNEL_ID}/feeds.json?api_key={THINGSPEAK_READ_API_KEY}&results=1"
 
 # Default values for missing fields
@@ -71,11 +71,10 @@ def predict():
             "ph": float(latest_entry.get("field1", DEFAULT_VALUES["ph"])),
             "Turbidity": float(latest_entry.get("field2", DEFAULT_VALUES["Turbidity"])),
             "Solids": float(latest_entry.get("field3", DEFAULT_VALUES["Solids"])),
-            "Conductivity": float(latest_entry.get("field4", DEFAULT_VALUES["Conductivity"])),
         }
 
         # Add missing fields with default values
-        for key in ["Hardness", "Chloramines", "Sulfate", "Organic_carbon", "Trihalomethanes"]:
+        for key in ["Hardness", "Chloramines", "Sulfate", "Organic_carbon", "Trihalomethanes", "Conductivity"]:
             water_data[key] = DEFAULT_VALUES[key]
 
         # Convert to DataFrame
@@ -130,10 +129,9 @@ def get_raw_data():
             "ph": float(latest_entry.get("field1", DEFAULT_VALUES["ph"])),
             "Turbidity": float(latest_entry.get("field2", DEFAULT_VALUES["Turbidity"])),
             "Solids": float(latest_entry.get("field3", DEFAULT_VALUES["Solids"])),
-            "Conductivity": float(latest_entry.get("field4", DEFAULT_VALUES["Conductivity"])),
         }
 
-        for key in ["Hardness", "Chloramines", "Sulfate", "Organic_carbon", "Trihalomethanes"]:
+        for key in ["Hardness", "Chloramines", "Sulfate", "Organic_carbon", "Trihalomethanes","Conductivity"]:
             water_data[key] = DEFAULT_VALUES[key]
 
         return jsonify(water_data)
