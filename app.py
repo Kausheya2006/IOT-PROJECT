@@ -13,16 +13,25 @@ CORS(app)  # Enable CORS for cross-origin requests
 model = joblib.load('training_model/water_potability_model.pkl')
 scaler = joblib.load('training_model/scaler.pkl')  # Load the scaler
 
+from dotenv import load_dotenv
+import os
+
+# Load .env variables
+load_dotenv()
+
 # ThingSpeak channel information
-THINGSPEAK_CHANNEL_ID = "2914163"
-THINGSPEAK_API_KEY = "WHOYDCQ41TBWIT7J"
+THINGSPEAK_CHANNEL_ID = os.getenv("THINGSPEAK_CHANNEL_ID")
+THINGSPEAK_API_KEY = os.getenv("THINGSPEAK_API_KEY")
 THINGSPEAK_URL = f"https://api.thingspeak.com/channels/{THINGSPEAK_CHANNEL_ID}/feeds/last.json?api_key={THINGSPEAK_API_KEY}"
 
 # MongoDB connection setup
-MONGO_URI = "mongodb+srv://royrimo2006:kggmmsec9352@cluster75683.mi2sh.mongodb.net/"
+MONGO_URI = os.getenv("MONGO_URI")
+DB_NAME = os.getenv("DB_NAME")
+COLLECTION_NAME = os.getenv("COLLECTION_NAME")
+
 client = MongoClient(MONGO_URI)
-db = client['water_quality_db']  # Replace with your database name
-collection = db['water_quality_data']  # Replace with your collection name
+db = client[DB_NAME]
+collection = db[COLLECTION_NAME]
 
 # Function to determine action remark based on score
 def get_action_remark(score):

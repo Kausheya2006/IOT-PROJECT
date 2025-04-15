@@ -1,2 +1,5 @@
 venv
+.env
+dashboard/config.js
+esp_codebase/project_code/secrets.h
 __pycache__/

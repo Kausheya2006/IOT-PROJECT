@@ -4,9 +4,8 @@
 #include <ArduinoJson.h>
 #include <Arduino.h>
 
-#define WIFI_SSID "LAPTOP-FPTIS8PP 6659"
-#define WIFI_PASSWORD "12365478"
-#define THINGSPEAK_API_KEY "QUNCGTVNYZOBVIH2"
+#include "secrets.h"
+
 unsigned long myChannelNumber = 2914163;
 WiFiClient client;
 
