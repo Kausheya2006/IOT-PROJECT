@@ -164,30 +164,33 @@
       width: 100%;
     }
     
-    /* Alert notification */
+    /* Enhanced Alert notification */
     .alert-notification {
-      position: fixed;
-      top: 30px;
-      right: 30px;
-      z-index: 1000;
-      width: 320px;
-      padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-      display: flex;
-      align-items: center;
-      gap: 15px;
-      transform: translateX(120%);
-      transition: transform 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+        position: fixed;
+        top: 30px;
+        right: 30px;
+        z-index: 1000;
+        width: 350px;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        display: flex;
+        align-items: flex-start;
+        gap: 15px;
+        transform: translateX(0);
+        opacity: 1;
     }
+     
     
     .alert-notification.show {
       transform: translateX(0);
+      opacity: 1;
     }
     
     .alert-notification i {
       font-size: 24px;
       flex-shrink: 0;
+      margin-top: 3px;
     }
     
     .alert-content {
@@ -195,41 +198,65 @@
     }
     
     .alert-notification h3 {
-      margin: 0 0 5px;
-      font-size: 16px;
-      font-weight: 600;
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 700;
     }
     
     .alert-notification p {
       margin: 0;
       font-size: 14px;
-      color: var(--gray);
+      line-height: 1.5;
+    }
+    
+    .alert-notification .action-remark {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 13px;
     }
     
     .alert-notification.safe {
-      background: linear-gradient(135deg, #d4edda, #c3e6cb);
-      border-left: 4px solid var(--safe);
+      background: white;
+      border-left: 5px solid var(--safe);
     }
     
     .alert-notification.safe i {
       color: var(--safe);
     }
     
+    .alert-notification.safe .action-remark {
+      background-color: rgba(42, 157, 143, 0.15);
+      color: var(--safe);
+    }
+    
     .alert-notification.warning {
-      background: linear-gradient(135deg, #fff3cd, #ffeeba);
-      border-left: 4px solid var(--warning);
+      background: white;
+      border-left: 5px solid var(--warning);
     }
     
     .alert-notification.warning i {
       color: var(--warning);
     }
     
+    .alert-notification.warning .action-remark {
+      background-color: rgba(255, 190, 11, 0.15);
+      color: #b68a00;
+    }
+    
     .alert-notification.danger {
-      background: linear-gradient(135deg, #f8d7da, #f5c6cb);
-      border-left: 4px solid var(--danger);
+      background: white;
+      border-left: 5px solid var(--danger);
     }
     
     .alert-notification.danger i {
+      color: var(--danger);
+    }
+    
+    .alert-notification.danger .action-remark {
+      background-color: rgba(230, 57, 70, 0.15);
       color: var(--danger);
     }
     
@@ -247,7 +274,7 @@
       }
       
       .alert-notification {
-        width: 280px;
+        width: 300px;
         right: 20px;
       }
     }
@@ -297,7 +324,7 @@
     <div class="card-grid">
       <div class="card span-4">
         <div class="card-header">
-          <h2><i class="fas fa-water"></i> Turbidity</h2>
+          <h2><i class="fas fa-tint"></i> Turbidity</h2>
         </div>
         <div class="chart-container">
           <canvas id="turbidityChart"></canvas>
@@ -306,7 +333,7 @@
       
       <div class="card span-4">
         <div class="card-header">
-          <h2><i class="fas fa-layer-group"></i> Solids</h2>
+          <h2><i class="fas fa-tint"></i> Solids</h2>
         </div>
         <div class="chart-container">
           <canvas id="solidsChart"></canvas>
@@ -315,7 +342,7 @@
       
       <div class="card span-4">
         <div class="card-header">
-          <h2><i class="fas fa-flask"></i> pH Level</h2>
+          <h2><i class="fas fa-tint"></i> pH Levels</h2>
         </div>
         <div class="chart-container">
           <canvas id="phChart"></canvas>
@@ -324,78 +351,36 @@
     </div>
   </div>
 
+  <!-- Enhanced Alert Notification -->
   <div class="alert-notification" id="alertBox">
-    <i class="fas fa-sync-alt fa-spin"></i>
+    <i class="fas fa-exclamation-triangle"></i>
     <div class="alert-content">
-      <h3>System Status</h3>
-      <p>Initializing dashboard...</p>
+      <h3 id="alertTitle">Alert!</h3>
+      <p id="alertMessage">Initializing water quality monitoring system...</p>
+      <div class="action-remark" id="actionRemark"></div>
     </div>
   </div>
 
   <script>
-    // DOM Elements
-    const sensorGrid = document.getElementById('sensorGrid');
     const alertBox = document.getElementById('alertBox');
-    const scoreChartCanvas = document.getElementById('scoreChart');
-    const turbidityChartCanvas = document.getElementById('turbidityChart');
-    const solidsChartCanvas = document.getElementById('solidsChart');
-    const phChartCanvas = document.getElementById('phChart');
+    const alertTitle = document.getElementById('alertTitle');
+    const alertMessage = document.getElementById('alertMessage');
+    const actionRemark = document.getElementById('actionRemark');
+    const sensorGrid = document.getElementById('sensorGrid');
+    const scoreChartCanvas = document.getElementById('scoreChart').getContext('2d');
+    const turbidityChartCanvas = document.getElementById('turbidityChart').getContext('2d');
+    const solidsChartCanvas = document.getElementById('solidsChart').getContext('2d');
+    const phChartCanvas = document.getElementById('phChart').getContext('2d');
     
-    // Chart Data
-    const scoreLabels = [];
-    const scoreData = [];
-    const turbidityData = [];
-    const solidsData = [];
-    const phData = [];
-    
-    // Chart Configurations
-    const chartOptions = {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: false
-        },
-        tooltip: {
-          mode: 'index',
-          intersect: false
-        }
-      },
-      scales: {
-        x: {
-          grid: {
-            display: false
-          },
-          ticks: {
-            color: '#6c757d'
-          }
-        },
-        y: {
-          grid: {
-            color: 'rgba(0,0,0,0.05)'
-          },
-          ticks: {
-            color: '#6c757d'
-          }
-        }
-      },
-      elements: {
-        point: {
-          radius: 0,
-          hoverRadius: 6
-        },
-        line: {
-          tension: 0.4
-        }
-      },
-      interaction: {
-        mode: 'nearest',
-        axis: 'x',
-        intersect: false
-      }
-    };
-    
-    // Initialize Charts
+    // Initialize data arrays
+    let scoreData = [];
+    let scoreLabels = [];
+    let turbidityData = [];
+    let solidsData = [];
+    let phData = [];
+    let timestampCounter = 1;
+
+    // Chart.js config
     const scoreChart = new Chart(scoreChartCanvas, {
       type: 'line',
       data: {
@@ -403,13 +388,38 @@
         datasets: [{
           label: 'Safety Score',
           data: scoreData,
-          borderColor: 'rgba(0, 123, 255, 0.8)',
-          backgroundColor: 'rgba(0, 123, 255, 0.1)',
+          borderColor: '#2a9d8f',
+          backgroundColor: 'rgba(42, 157, 143, 0.1)',
           borderWidth: 2,
-          fill: true
+          pointRadius: 3,
+          pointBackgroundColor: '#2a9d8f',
+          fill: true,
+          tension: 0.4
         }]
       },
-      options: chartOptions
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            grid: {
+              display: false
+            }
+          },
+          y: {
+            min: 0,
+            max: 100,
+            ticks: {
+              stepSize: 20
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            display: false
+          }
+        }
+      }
     });
     
     const turbidityChart = new Chart(turbidityChartCanvas, {
@@ -419,14 +429,36 @@
         datasets: [{
           label: 'Turbidity',
           data: turbidityData,
-          borderColor: 'rgba(255, 159, 64, 0.8)',
+          borderColor: '#ffbe0b',
+          backgroundColor: 'rgba(255, 190, 11, 0.1)',
           borderWidth: 2,
-          fill: false
+          pointRadius: 3,
+          pointBackgroundColor: '#ffbe0b',
+          fill: true,
+          tension: 0.4
         }]
       },
-      options: chartOptions
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            grid: {
+              display: false
+            }
+          },
+          y: {
+            beginAtZero: true
+          }
+        },
+        plugins: {
+          legend: {
+            display: false
+          }
+        }
+      }
     });
-    
+
     const solidsChart = new Chart(solidsChartCanvas, {
       type: 'line',
       data: {
@@ -434,127 +466,237 @@
         datasets: [{
           label: 'Solids',
           data: solidsData,
-          borderColor: 'rgba(75, 192, 192, 0.8)',
+          borderColor: '#e63946',
+          backgroundColor: 'rgba(230, 57, 70, 0.1)',
           borderWidth: 2,
-          fill: false
+          pointRadius: 3,
+          pointBackgroundColor: '#e63946',
+          fill: true,
+          tension: 0.4
         }]
       },
-      options: chartOptions
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            grid: {
+              display: false
+            }
+          },
+          y: {
+            beginAtZero: true
+          }
+        },
+        plugins: {
+          legend: {
+            display: false
+          }
+        }
+      }
     });
-    
+
     const phChart = new Chart(phChartCanvas, {
       type: 'line',
       data: {
         labels: scoreLabels,
         datasets: [{
-          label: 'pH Level',
+          label: 'pH Levels',
           data: phData,
-          borderColor: 'rgba(153, 102, 255, 0.8)',
+          borderColor: '#00a896',
+          backgroundColor: 'rgba(0, 168, 150, 0.1)',
           borderWidth: 2,
-          fill: false
+          pointRadius: 3,
+          pointBackgroundColor: '#00a896',
+          fill: true,
+          tension: 0.4
         }]
       },
-      options: chartOptions
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            grid: {
+              display: false
+            }
+          },
+          y: {
+            min: 0,
+            max: 14,
+            ticks: {
+              stepSize: 2
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            display: false
+          }
+        }
+      }
     });
-    
-    // Fetch Data Function
+
+    // Fetch sensor data
     async function fetchData() {
       try {
-        const [dataRes, predictRes] = await Promise.all([
-          fetch('http://192.168.137.196:5001/data'),
-          fetch('http://192.168.137.196:5001/predict')
-        ]);
-
-        const data = await dataRes.json();
-        const prediction = await predictRes.json();
-
-        // Update Sensor Grid
-        sensorGrid.innerHTML = '';
+        const response = await fetch('http://localhost:5001/predict');
+        const data = await response.json();
         
-        const sensors = [
-          { name: 'Turbidity', value: data.Turbidity, unit: 'NTU', icon: 'fa-water' },
-          { name: 'Solids', value: data.Solids, unit: 'mg/L', icon: 'fa-layer-group' },
-          { name: 'ph', value: data.ph, unit: 'ph', icon: 'fa-flask' }
-        ];
+        // Generate a timestamp for this reading
+        const now = new Date();
+        const timestamp = now.toLocaleTimeString();
         
-        sensors.forEach(sensor => {
-          const card = document.createElement('div');
-          card.className = 'sensor-card';
-          card.innerHTML = `
-            <i class="fas ${sensor.icon}"></i>
-            <div class="sensor-name">${sensor.name}</div>
-            <div class="sensor-value">${sensor.value}</div>
-            <div class="sensor-unit">${sensor.unit}</div>
-            <div class="sensor-trend">
-              <i class="fas fa-arrow-up"></i> 0.2 (5min)
-            </div>
-          `;
-          sensorGrid.appendChild(card);
-        });
-        
-        // Update Alert Notification
-        const remark = prediction.Action_Remark;
-        alertBox.querySelector('p').textContent = remark;
-        alertBox.className = 'alert-notification show';
-        
-        // Set alert style based on status
-        if (remark.includes("Unsafe")) {
-          alertBox.classList.add('danger');
-          alertBox.querySelector('i').className = 'fas fa-exclamation-triangle';
-        } else if (remark.includes("Warning")) {
-          alertBox.classList.add('warning');
-          alertBox.querySelector('i').className = 'fas fa-exclamation-circle';
-        } else {
-          alertBox.classList.add('safe');
-          alertBox.querySelector('i').className = 'fas fa-check-circle';
-        }
-        
-        // Update Charts
-        const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        scoreLabels.push(now);
-        scoreData.push(prediction.Water_Safety_Score);
-        turbidityData.push(data.Turbidity);
-        solidsData.push(data.Solids);
+        // Update data arrays
+        scoreLabels.push(timestamp);
+        scoreData.push(data.Safety_Score);
+        turbidityData.push(data.turbidity);
+        solidsData.push(data.solids);
         phData.push(data.ph);
-
-        // Keep only last 10 data points
-        if (scoreLabels.length > 10) {
+        
+        // Keep only the last 10 data points
+        if (scoreData.length > 10) {
           scoreLabels.shift();
           scoreData.shift();
           turbidityData.shift();
           solidsData.shift();
           phData.shift();
         }
-
-        // Update charts with animation
+        
+        // Update charts
         scoreChart.update();
         turbidityChart.update();
         solidsChart.update();
         phChart.update();
-        
-        // Add pulse animation to updated sensor cards
-        document.querySelectorAll('.sensor-value').forEach(el => {
-          el.classList.add('updated');
-          setTimeout(() => el.classList.remove('updated'), 500);
-        });
 
-      } catch (err) {
-        console.error('Error fetching data', err);
-        alertBox.className = 'alert-notification show danger';
-        alertBox.querySelector('i').className = 'fas fa-exclamation-triangle';
-        alertBox.querySelector('h3').textContent = 'Connection Error';
-        alertBox.querySelector('p').textContent = 'Failed to connect to backend services';
+        // Update sensor grid
+        updateSensorGrid(data);
+        
+        // Update alert notification based on prediction
+        updateAlertNotification(data);
+        
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        
+        // Show error alert
+        alertBox.className = "alert-notification danger show";
+        alertTitle.textContent = "Connection Error";
+        alertMessage.textContent = "Failed to fetch water quality data.";
+        actionRemark.textContent = "Check server connection and try again";
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+          alertBox.classList.remove('show');
+        }, 5000);
       }
     }
 
-    // Initial fetch and set interval
-    fetchData();
-    setInterval(fetchData, 15000);
+    // Update sensor grid with new data
+    function updateSensorGrid(data) {
+      sensorGrid.innerHTML = `
+        <div class="sensor-card">
+          <div class="sensor-value">${data.Safety_Score.toFixed(1)}</div>
+          <div class="sensor-unit">Safety Score</div>
+          <div class="sensor-trend">
+            <i class="fas fa-${data.Safety_Score > (scoreData.length > 1 ? scoreData[scoreData.length-2] : 50) ? 'arrow-up' : 'arrow-down'}"></i>
+            <span>${data.Prediction}</span>
+          </div>
+        </div>
+        <div class="sensor-card">
+          <div class="sensor-value">${data.ph.toFixed(2)}</div>
+          <div class="sensor-unit">pH Level</div>
+          <div class="sensor-trend">
+            <i class="fas fa-${data.ph > (phData.length > 1 ? phData[phData.length-2] : 7) ? 'arrow-up' : 'arrow-down'}"></i>
+            <span>${data.ph > 8.5 ? 'High' : data.ph < 6.5 ? 'Low' : 'Normal'}</span>
+          </div>
+        </div>
+        <div class="sensor-card">
+          <div class="sensor-value">${data.turbidity.toFixed(2)}</div>
+          <div class="sensor-unit">Turbidity (NTU)</div>
+          <div class="sensor-trend">
+            <i class="fas fa-${data.turbidity > (turbidityData.length > 1 ? turbidityData[turbidityData.length-2] : 2) ? 'arrow-up' : 'arrow-down'}"></i>
+            <span>${data.turbidity > 5 ? 'High' : 'Normal'}</span>
+          </div>
+        </div>
+        <div class="sensor-card">
+          <div class="sensor-value">${data.solids.toFixed(2)}</div>
+          <div class="sensor-unit">Solids (ppm)</div>
+          <div class="sensor-trend">
+            <i class="fas fa-${data.solids > (solidsData.length > 1 ? solidsData[solidsData.length-2] : 0) ? 'arrow-up' : 'arrow-down'}"></i>
+            <span>${data.solids > 500 ? 'High' : 'Normal'}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    // Update alert notification based on prediction
+    function updateAlertNotification(data) {
+      let alertClass, icon, title, message;
     
-    // Show notification with slight delay for better UX
+            if (data.Action_Remark.includes("🔴") || data.Action_Remark.includes("Unsafe")) {
+        alertClass = "danger";
+        icon = "fa-exclamation-triangle";
+        title = "Water Unsafe!";
+        message = "Immediate action required. Water is not safe for consumption.";
+      } else if (data.Action_Remark.includes("🟠") || data.Action_Remark.includes("Treat")) {
+        alertClass = "danger";
+        icon = "fa-tools";
+        title = "Treatment Advised";
+        message = "Water requires treatment before use.";
+      } else if (data.Action_Remark.includes("🔶") || data.Action_Remark.includes("Caution")) {
+        alertClass = "warning";
+        icon = "fa-exclamation-circle";
+        title = "Caution Advised";
+        message = "Water quality is concerning. Proceed with caution.";
+      } else if (data.Action_Remark.includes("⚠️") || data.Action_Remark.includes("Monitor")) {
+        alertClass = "warning";
+        icon = "fa-eye";
+        title = "Monitor Water Quality";
+        message = "Water quality requires regular monitoring.";
+      } else if (data.Action_Remark.includes("✅") || data.Action_Remark.includes("Safe")) {
+        alertClass = "safe";
+        icon = "fa-check-circle";
+        title = "Water Safe";
+        message = "Water quality is within safe parameters.";
+      } else {
+        alertClass = "info";
+        icon = "fa-info-circle";
+        title = "Status Unknown";
+        message = "Unable to determine water safety status.";
+      }
+
+      
+      // Update notification
+      // Update notification without animation
+      alertBox.className = `alert-notification ${alertClass}`;
+      alertBox.style.transform = "translateX(0)";
+      alertBox.style.opacity = "1";
+      alertBox.innerHTML = `
+        <i class="fas ${icon}"></i>
+        <div class="alert-content">
+          <h3>${title}</h3>
+          <p>${message}</p>
+          <div class="action-remark">${data.Action_Remark}</div>
+        </div>
+      `;
+      
+      // Remove the auto-hide timeout since we want it to stay on screen
+    }
+
+    // Initial notification - show immediately without animation
+    alertBox.className = "alert-notification safe";
+    alertBox.style.transform = "translateX(0)";
+    alertBox.style.opacity = "1";
     setTimeout(() => {
-      alertBox.classList.add('show');
-    }, 500);
+      alertBox.className = "alert-notification safe";
+    }, 3000);
+
+
+    // Fetch data every 5 seconds
+    setInterval(fetchData, 5000);
+
+    // Initial fetch
+    fetchData();
   </script>
 </body>
 </html>

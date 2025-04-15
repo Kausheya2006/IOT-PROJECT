@@ -1,41 +1,32 @@
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include <ThingSpeak.h>
+#include <ArduinoJson.h>
+#include <Arduino.h>
 
-// WiFi and ThingSpeak Configuration
 #define WIFI_SSID "LAPTOP-FPTIS8PP 6659"
 #define WIFI_PASSWORD "12365478"
 #define THINGSPEAK_API_KEY "QUNCGTVNYZOBVIH2"
 unsigned long myChannelNumber = 2914163;
 WiFiClient client;
 
-// Sensor Pins
 #define TURBIDITY_SENSOR_PIN 34
 #define TDS_SENSOR_PIN 33
 #define PH_SENSOR_PIN 35
 
-// Alarm Pins
 #define BUZZER_PIN 4
-#define RED_LED_PIN 5    // Alarm indicator
-#define GREEN_LED_PIN 17  // Safe indicator
+#define RED_LED_PIN 5
+#define GREEN_LED_PIN 17
 
-// Threshold Values
-#define TDS_THRESHOLD 11         // ppm
-#define TURBIDITY_THRESHOLD 5.03 // NTU
-#define PH_LOW_THRESHOLD 6.5     // Minimum safe pH
-#define PH_HIGH_THRESHOLD 8.5    // Maximum safe pH
+unsigned long lastBlink = 0;
+bool ledState = LOW;
 
 void setup() {
   Serial.begin(115200);
-  
-  // Initialize outputs
-  pinMode(BUZZER_PIN, OUTPUT);
   pinMode(RED_LED_PIN, OUTPUT);
   pinMode(GREEN_LED_PIN, OUTPUT);
-  digitalWrite(BUZZER_PIN, HIGH);
-  digitalWrite(RED_LED_PIN, LOW);
-  digitalWrite(GREEN_LED_PIN, LOW);
-  
-  // Connect to WiFi
+  pinMode(BUZZER_PIN, OUTPUT); // Set Buzzer Pin as OUTPUT
+
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
@@ -48,71 +39,94 @@ void setup() {
 float readTurbidity() {
   int rawValue = analogRead(TURBIDITY_SENSOR_PIN);
   float voltage = (rawValue / 4095.0) * 3.3;
-  float ntu = 2.3 * voltage + 2.1168;
-  return constrain(ntu, 0.0, 6.74);
+  return constrain(2.3 * voltage + 2.1168, 0.0, 6.74);
 }
 
 float readTDS() {
   int rawValue = analogRead(TDS_SENSOR_PIN);
   float voltage = rawValue * (3.3 / 4095.0);
-  return (133.42 * voltage * voltage * voltage - 255.86 * voltage * voltage + 857.39 * voltage) * 0.5;
+  float tds = (133.42 * voltage * voltage * voltage - 255.86 * voltage * voltage + 857.39 * voltage) * 0.5;
+  return tds * 1.73;
 }
 
 float readPH() {
   int rawValue = analogRead(PH_SENSOR_PIN);
   float voltage = rawValue * (3.3 / 4095.0);
-  return -5.70 * voltage + 21.34;
+  return -5.70 * voltage + 7.4435;
 }
 
-void checkAlarmConditions(float turbidity, float pH, float tds) {
-  bool turbidityAlert = turbidity > TURBIDITY_THRESHOLD;
-  bool phAlert = (pH < PH_LOW_THRESHOLD) || (pH > PH_HIGH_THRESHOLD);
-  bool tdsAlert = tds > TDS_THRESHOLD;
-  bool anyAlert = turbidityAlert || phAlert || tdsAlert;
+int fetchScore() {
+  HTTPClient http;
+  http.begin("http://192.168.137.196:5001/predict");  // Change to your actual server IP
 
-  // Control indicators
-  digitalWrite(GREEN_LED_PIN, !anyAlert);  // Green ON when safe
-  digitalWrite(RED_LED_PIN, anyAlert);     // Red ON when alarm
-  digitalWrite(BUZZER_PIN, !anyAlert);      // Buzzer ON when alarm
+  // Send GET request to fetch prediction data
+  int httpCode = http.GET();
+  int score = -1;
 
-  // Print warnings
-  if (anyAlert) {
-    Serial.println("ALARM! Unsafe conditions detected:");
-    if (turbidityAlert) Serial.println("- High turbidity!");
-    if (phAlert) {
-      if (pH < PH_LOW_THRESHOLD) Serial.println("- pH too low (acidic)!");
-      else Serial.println("- pH too high (basic)!");
+  if (httpCode == 200) {
+    String payload = http.getString();
+    DynamicJsonDocument doc(1024);
+    DeserializationError error = deserializeJson(doc, payload);
+
+    if (!error) {
+      float safetyScore = doc["Safety_Score"];
+      score = round(safetyScore); // Convert float to int
+    } else {
+      Serial.println("Failed to parse JSON");
     }
-    if (tdsAlert) Serial.println("- High TDS level!");
+  } else {
+    Serial.println("Failed to fetch score");
+  }
+
+  http.end();
+  return score;
+}
+
+void applyStatus(int score) {
+  if (score >= 85) {
+    digitalWrite(GREEN_LED_PIN, HIGH);
+    digitalWrite(RED_LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW); // Silent
+  } else if (score >= 70) {
+    digitalWrite(GREEN_LED_PIN, HIGH);
+    digitalWrite(RED_LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, HIGH); // Continuous beep
+  } else if (score >= 60) {
+    digitalWrite(GREEN_LED_PIN, LOW);
+    digitalWrite(RED_LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH); // Continuous beep
+  } else if (score >= 50) {
+    digitalWrite(GREEN_LED_PIN, LOW);
+    digitalWrite(RED_LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH); // Continuous beep
+  } else {
+    digitalWrite(GREEN_LED_PIN, LOW);
+    digitalWrite(RED_LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH); // Continuous beep
   }
 }
 
 void loop() {
-  // Read sensors
   float turbidity = readTurbidity();
   float pH = readPH();
   float tds = readTDS();
 
-  // Display readings
-  Serial.print("Turbidity (NTU): ");
-  Serial.print(turbidity);
-  Serial.print("\tpH: ");
-  Serial.print(pH);
-  Serial.print("\tTDS (ppm): ");
-  Serial.println(tds);
+  Serial.printf("Turbidity: %.2f NTU, pH: %.2f, TDS: %.2f ppm\n", turbidity, pH, tds);
 
-  // Check alarm conditions
-  checkAlarmConditions(turbidity, pH, tds);
+  int score = fetchScore();
+  if (score != -1) {
+    Serial.println("Water Quality Score: " + String(score));
+    applyStatus(score);
+  }
 
-  // Send data to ThingSpeak
+  // Send sensor data to ThingSpeak via POST request
   ThingSpeak.setField(1, pH);
   ThingSpeak.setField(2, turbidity);
   ThingSpeak.setField(3, tds);
-  
-  int responseCode = ThingSpeak.writeFields(myChannelNumber, THINGSPEAK_API_KEY);
-  if (responseCode != 200) {
-    Serial.println("ThingSpeak Error: " + String(responseCode));
+  int response = ThingSpeak.writeFields(myChannelNumber, THINGSPEAK_API_KEY);
+  if (response != 200) {
+    Serial.println("ThingSpeak Error: " + String(response));
   }
 
-  delay(15000); // Wait 15 seconds between readings
+  delay(15000); // Wait before sending the next set of data
 }

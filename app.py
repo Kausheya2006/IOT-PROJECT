@@ -1,227 +1,108 @@
-from flask import Flask, jsonify
-import requests
-import numpy as np
-import pandas as pd
+from flask import Flask, jsonify, request
 import joblib
-from flask_cors import CORS  # Add this
+import numpy as np
+import requests
+from flask_cors import CORS
+from pymongo import MongoClient
+import datetime
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)  # Enable CORS for cross-origin requests
 
-# Load pre-trained model
-model = joblib.load('model/water_quality_model.pkl')
+# Load pre-trained model and scaler
+model = joblib.load('training_model/water_potability_model.pkl')
+scaler = joblib.load('training_model/scaler.pkl')  # Load the scaler
 
-# ThingSpeak Channel & API Key
-THINGSPEAK_CHANNEL_ID = "2914163"  # Replace with your channel ID
-THINGSPEAK_READ_API_KEY = "WHOYDCQ41TBWIT7J"  # Replace with your Read API key
-THINGSPEAK_URL = f"https://api.thingspeak.com/channels/{THINGSPEAK_CHANNEL_ID}/feeds.json?api_key={THINGSPEAK_READ_API_KEY}&results=1"
+# ThingSpeak channel information
+THINGSPEAK_CHANNEL_ID = "2914163"
+THINGSPEAK_API_KEY = "WHOYDCQ41TBWIT7J"
+THINGSPEAK_URL = f"https://api.thingspeak.com/channels/{THINGSPEAK_CHANNEL_ID}/feeds/last.json?api_key={THINGSPEAK_API_KEY}"
 
-# Default values for missing fields
-DEFAULT_VALUES = {
-    "ph": 7.2,
-    "Hardness": 150,
-    "Solids": 500,
-    "Chloramines": 4.0,
-    "Sulfate": 250,
-    "Conductivity": 500,
-    "Organic_carbon": 5.0,
-    "Trihalomethanes": 0.08,
-    "Turbidity": 1.0
-}
-
-# Function to calculate water safety score
-def water_safety_score(probabilities):
-    return probabilities * 100
+# MongoDB connection setup
+MONGO_URI = "mongodb+srv://royrimo2006:kggmmsec9352@cluster75683.mi2sh.mongodb.net/"
+client = MongoClient(MONGO_URI)
+db = client['water_quality_db']  # Replace with your database name
+collection = db['water_quality_data']  # Replace with your collection name
 
 # Function to determine action remark based on score
 def get_action_remark(score):
     if score >= 85:
         return "✅ Safe - No Action Needed"
     elif score >= 70:
-        return "⚠️ Monitor Quality - Slow Buzzer"
+        return "⚠️ Monitor Quality"
     elif score >= 60:
-        return "🔶 Caution - Medium Buzzer"
+        return "🔶 Caution - Continous Red LED"
     elif score >= 50:
-        return "🟠 Treat Water - Fast Buzzer"
+        return "🟠 Treat Water - Continuous Red LED"
     else:
-        return "🔴 Unsafe - Continuous Buzzer"
-    
+        return "🔴 Unsafe - Continous Beeping"
+
 @app.route('/predict', methods=['GET'])
 def predict():
     try:
-        # Fetch latest data from ThingSpeak
+        # Fetch the latest data from ThingSpeak
         response = requests.get(THINGSPEAK_URL)
-
+        
         if response.status_code != 200:
-            return jsonify({"error": f"ThingSpeak API Error: {response.status_code}"}), 500
-
+            return jsonify({"error": "Failed to fetch data from ThingSpeak."}), 500
+        
         data = response.json()
 
-        if not isinstance(data, dict) or "feeds" not in data:
-            return jsonify({"error": "Invalid response from ThingSpeak"}), 500
+        # Extract the necessary fields
+        try:
+            ph = float(data["field1"])  # Assuming 'field1' corresponds to 'ph'
+            turbidity = float(data["field2"])  # Assuming 'field2' corresponds to 'Turbidity'
+            solids = float(data["field3"])  # Assuming 'field3' corresponds to 'Solids'
+        except KeyError:
+            return jsonify({"error": "Missing required fields in the ThingSpeak data."}), 400
+        except ValueError:
+            return jsonify({"error": "Invalid value in the ThingSpeak data."}), 400
 
-        feeds = data["feeds"]
-        if not feeds:
-            return jsonify({"error": "No data found in ThingSpeak"}), 500
+        # Prepare the data for prediction
+        data_for_prediction = np.array([[ph, solids, turbidity]])
 
-        latest_entry = feeds[-1]  # Get the most recent entry
+        # Scale the data
+        scaled_data = scaler.transform(data_for_prediction)
 
-        # Map ThingSpeak fields to model inputs
-        water_data = {
-            "ph": float(latest_entry.get("field1", DEFAULT_VALUES["ph"])),
-            "Turbidity": float(latest_entry.get("field2", DEFAULT_VALUES["Turbidity"])),
-            "Solids": float(latest_entry.get("field3", DEFAULT_VALUES["Solids"])),
+        # Get prediction and probability
+        prediction = model.predict(scaled_data)[0]
+        probability = model.predict_proba(scaled_data)[0][1]
+
+        # Result
+        result = "Suitable" if prediction == 1 else "Not Suitable"
+        safety_score = probability * 100
+
+        # Get action remark based on the safety score
+        action_remark = get_action_remark(safety_score)
+
+        # Save the prediction result and related data into MongoDB
+        record = {
+            "ph": ph,
+            "turbidity": turbidity,
+            "solids": solids,
+            "prediction": result,
+            "safety_score": safety_score,
+            "action_remark": action_remark,
+            "timestamp": datetime.datetime.utcnow()  # Timestamp of the data insertion
         }
 
-        # Add missing fields with default values
-        for key in ["Hardness", "Chloramines", "Sulfate", "Organic_carbon", "Trihalomethanes", "Conductivity"]:
-            water_data[key] = DEFAULT_VALUES[key]
+        # Insert the record into MongoDB collection
+        collection.insert_one(record)
 
-        # Convert to DataFrame
-        df = pd.DataFrame([water_data])
-
-        # Ensure correct feature order
-        df = df[model.feature_names_in_]
-
-        # Predict probability of potability
-        predicted_probabilities = model.predict_proba(df)[:, 1]
-
-        # Calculate safety score
-        safety_scores = water_safety_score(predicted_probabilities)
-
-        # Get action remarks
-        remarks = [get_action_remark(score) for score in safety_scores]
-
-        # Create response
-        # Convert NumPy float32 to Python float before returning
+        # Return the response with action remark
         response = {
-            "Water_Safety_Score": float(safety_scores[0]),  # Convert float32 to float
-            "Action_Remark": remarks[0]  # String values are fine
+            "ph": ph,
+            "turbidity": turbidity,
+            "solids": solids,
+            "Prediction": result,
+            "Safety_Score": safety_score,
+            "Action_Remark": action_remark
         }
-
 
         return jsonify(response)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
-@app.route('/data', methods=['GET'])
-def get_raw_data():
-    try:
-        response = requests.get(THINGSPEAK_URL)
-
-        if response.status_code != 200:
-            return jsonify({"error": f"ThingSpeak API Error: {response.status_code}"}), 500
-
-        data = response.json()
-
-        if not isinstance(data, dict) or "feeds" not in data:
-            return jsonify({"error": "Invalid response from ThingSpeak"}), 500
-
-        feeds = data["feeds"]
-        if not feeds:
-            return jsonify({"error": "No data found in ThingSpeak"}), 500
-
-        latest_entry = feeds[-1]
-
-        # Map data and include missing values
-        water_data = {
-            "ph": float(latest_entry.get("field1", DEFAULT_VALUES["ph"])),
-            "Turbidity": float(latest_entry.get("field2", DEFAULT_VALUES["Turbidity"])),
-            "Solids": float(latest_entry.get("field3", DEFAULT_VALUES["Solids"])),
-        }
-
-        for key in ["Hardness", "Chloramines", "Sulfate", "Organic_carbon", "Trihalomethanes","Conductivity"]:
-            water_data[key] = DEFAULT_VALUES[key]
-
-        return jsonify(water_data)
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True)
-
-
-# from flask import Flask, request, jsonify
-# import numpy as np
-# import pandas as pd
-# import joblib
-
-# app = Flask(__name__)
-
-# # Load pre-trained model
-# model = joblib.load('model/water_quality_model.pkl')
-
-# # Default values for missing fields
-# DEFAULT_VALUES = {
-#     "ph": 7.2,
-#     "Hardness": 150,
-#     "Solids": 500,
-#     "Chloramines": 4.0,
-#     "Sulfate": 250,
-#     "Conductivity": 500,
-#     "Organic_carbon": 5.0,
-#     "Trihalomethanes": 0.08,
-#     "Turbidity": 1.0
-# }
-
-# # Function to calculate water safety score
-# def water_safety_score(probabilities):
-#     return probabilities * 100
-
-# # Function to determine action remark based on score
-# def get_action_remark(score):
-#     if score >= 85:
-#         return "✅ Safe - No Action Needed"
-#     elif score >= 70:
-#         return "⚠️ Monitor Quality - Slow Buzzer"
-#     elif score >= 60:
-#         return "🔶 Caution - Medium Buzzer"
-#     elif score >= 50:
-#         return "🟠 Treat Water - Fast Buzzer"
-#     else:
-#         return "🔴 Unsafe - Continuous Buzzer"
-
-# @app.route('/predict', methods=['POST'])
-# def predict():
-#     try:
-#         # Get JSON data from request
-#         data = request.json
-
-#         # Fill missing values with defaults
-#         for key, default in DEFAULT_VALUES.items():
-#             if key not in data or data[key] is None:
-#                 data[key] = default
-
-#         # Convert to DataFrame
-#         df = pd.DataFrame([data])
-
-#         # Ensure correct feature order
-#         df = df[model.feature_names_in_]
-
-#         # Predict probability of potability
-#         predicted_probabilities = model.predict_proba(df)[:, 1]
-
-#         # Calculate safety score
-#         safety_scores = water_safety_score(predicted_probabilities)
-
-#         # Get action remarks
-#         remarks = [get_action_remark(score) for score in safety_scores]
-
-#         # Create response
-#         response = {
-#             "Potability_Probability": predicted_probabilities[0],
-#             "Water_Safety_Score": safety_scores[0],
-#             "Action_Remark": remarks[0]
-#         }
-
-#         return jsonify({"score": float(safety_scores)})  # ✅ Convert float32 to Python float
-
-
-#     except Exception as e:
-#         return jsonify({"error": str(e)})
-
-# if __name__ == '__main__':
-#     app.run(debug=True)
